@@ -356,7 +356,14 @@ def inference_autobatch( model, encoder, example, batch = 1, prelog = False, cac
                                                           model,
                                                         cache=cache,calculate = calculate, batch=batch)
         
-        uncond_ce, uncond_t_lens, _ = cross_entropy_list_gpt3([opt['uncond_premise'] for opt in options],
+        ## get domain conditional CEs
+        domain_cond_ce, domain_cond_t_lens, _ = cross_entropy_list_gpt3([opt['uncond_premise'] for opt in options],
+                                        [opt['uncond_hypothesis'] for opt in options],
+                                        model,
+                                        cache=cache,calculate = calculate, batch=batch)
+
+        ## get unconditional CEs
+        uncond_ce, uncond_t_lens, _ = cross_entropy_list_gpt3([':' for opt in options],
                                         [opt['uncond_hypothesis'] for opt in options],
                                         model,
                                         cache=cache,calculate = calculate, batch=batch)
@@ -367,10 +374,15 @@ def inference_autobatch( model, encoder, example, batch = 1, prelog = False, cac
                                     model, cache=cache, batch=batch, calculate = calculate)
 
         
-        ## get unconditional CEs
-        uncond_ce  = cross_entropy_list([opt['uncond_premise'] for opt in options],
+        ## get domain conditional CEs
+        domain_cond_ce  = cross_entropy_list([opt['uncond_premise'] for opt in options],
                                         [opt['uncond_hypothesis'] for opt in options],
                                         model, cache=cache, batch=batch, calculate = calculate)
+        
+        ## get unconditional CEs
+        uncond_ce = cross_entropy_list([[25] for opt in options],
+                                       [opt['uncond_hypothesis'] for opt in options],
+                                       model, cache=cache, batch=batch, calculate = calculate)
 
     ## get average CE by token
     if gpt3:
@@ -384,19 +396,22 @@ def inference_autobatch( model, encoder, example, batch = 1, prelog = False, cac
     ## prediction
     #####
     # calculate dcpmi
-    dcpmi = [ce_0 - ce_1 for ce_0,ce_1 in zip(uncond_ce, cond_ce)]
+    dcpmi = [ce_0 - ce_1 for ce_0,ce_1 in zip(domain_cond_ce, cond_ce)]
+    pmi = [ce_0 - ce_1 for ce_0,ce_1 in zip(uncond_ce, cond_ce)]
 
     
     ## make predictions based on different scores
     lm_pred = cond_ce.index(min(cond_ce))
     lm_avg_pred = avg_cond_ce.index(min(avg_cond_ce))
-    lm_uncond_pred = uncond_ce.index(min(uncond_ce))
+    lm_domain_cond_pred = domain_cond_ce.index(min(domain_cond_ce))
     dcpmi_pred = dcpmi.index(max(dcpmi))
+    pmi_pred = pmi.index(max(pmi))
     pred = {
                  'lm': lm_pred,
                  'tok_mean': lm_avg_pred,
                  'dcpmi' : dcpmi_pred,
-                 'uncond': lm_uncond_pred,
+                 'pmi': pmi_pred,
+                 'domain_cond': lm_domain_cond_pred,
            }
     return pred
 

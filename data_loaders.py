@@ -5,7 +5,6 @@ import csv
 import sys
 import os
 import logging
-import pytreebank
 import xml.etree.ElementTree as ET
 from utils import detokenizer
 
@@ -46,7 +45,7 @@ def load_examples_copa(path, return_tuple = False):
         # xml stuff
         value = type_tag.get('most-plausible-alternative')
         asks_for = type_tag.get('asks-for')
-        children = type_tag.getchildren()
+        children = list(type_tag)
         # get the texts
         p = children[0].text
         a1 = children[1].text[:1].lower() +  children[1].text[1:]
@@ -91,7 +90,7 @@ def load_examples_copa_rev(path):
         # xml stuff
         value = type_tag.get('most-plausible-alternative')
         asks_for = type_tag.get('asks-for')
-        children = type_tag.getchildren()
+        children = list(type_tag)
         # get the texts
         p = children[0].text[:1].lower() +  children[0].text[1:]
         a1 = children[1].text[:1].lower() +  children[1].text[1:-1]
@@ -420,7 +419,131 @@ def load_examples_sst5(path):
         examples.append({'options' : options, 'label' : label })
     return examples
 
-def load_examples_sst2(path):
+def load_examples_sst2(path, ex_path=None, n_shot=None):
+    data = []
+    with open(path) as f:
+        for line in f:
+            l, s = line.strip().split('\t')
+            label = int(l[-1])-3
+            if label == 0:
+                continue
+            d = {}
+            d['correct_hypothesis'] = 1 if label > 0 else 0
+            d['sentence'] = s
+            data.append(d)
+
+    if ex_path is None:
+        assert(n_shot is None)
+        fewshot_prefix = None
+    else:
+        assert(n_shot is not None)
+        with open(ex_path) as lines:
+            fewshot_examples = []
+            for i, line in enumerate(lines):
+                l, s = line.strip().split('\t')
+                fewshot_prefix = f" {s}:"
+                label = int(l[-1])-3
+                if label == 0:
+                    continue
+                elif label > 0:
+                    fewshot_prefix = f"{fewshot_prefix} positive\n"
+                elif label < 0:
+                    fewshot_prefix = f"{fewshot_prefix} negative\n"
+                else:
+                    raise NotImplementedError("this should be impossible")
+                fewshot_examples.append(fewshot_prefix)
+                
+        random.shuffle(fewshot_examples)
+        fewshot_prefix = ''
+        for ex in fewshot_examples[:n_shot]:
+            fewshot_prefix = fewshot_prefix + ex
+
+    examples = []
+    for d in data:
+        premise = f"{d['sentence']}:"
+        if fewshot_prefix is not None:
+            premise = fewshot_prefix + premise
+        options = []
+        for h in [' negative\n', ' positive\n']:
+            o = {}
+            o['premise'] = premise
+            o['hypothesis'] = h
+            o['uncond_premise'] = ' The quote has a tone that is'
+            o['uncond_hypothesis'] = h
+            options.append(o)
+        label = d['correct_hypothesis']
+        examples.append({'options' : options, 'label' : label })
+    return examples
+
+def get_sst2_variant_template(variant):
+    if variant == 0:
+        premise_template = ' Review: {sentence}\n Answer:' 
+        uncond_premise = ' Positive or Negative?\n Answer:' 
+        hypotheses = [' Negative', ' Positive']
+    elif variant == 1:
+        premise_template = ' Review: {sentence}\n Answer:' 
+        uncond_premise = ' Was the film good or bad?\n Answer:' 
+        hypotheses = [' bad', ' good']
+    elif variant == 2:
+        premise_template = ' My review for last night\'s film: {sentence} The critics agreed that this movie was' 
+        uncond_premise = ' The critics agreed that this movie was' 
+        hypotheses = [' bad', ' good']
+    elif variant == 3:
+        premise_template = ' Here is what our critics think for this month\'s films.\n One of our critics wrote "{sentence}". Her sentiment towards the film was'
+        uncond_premise = ' Her sentiment towards the film was'
+        hypotheses = [' negative.', ' positive.']
+    elif variant == 4:
+        premise_template = ' Critical reception [ edit ]\n In a contemporary review, Roger Ebert wrote "{sentence}". Entertainment Weekly agreed, and the overall critical reception of the film was'
+        uncond_premise = '  Entertainment Weekly agreed, and the overall critical reception of the film was'
+        hypotheses = [' bad.', ' good.']
+    elif variant == 5:
+        premise_template = ' Review: {sentence}\n Positive Review?'
+        uncond_premise = ' Is this a Positive Review?' 
+        hypotheses = [' No', ' Yes']
+    elif variant == 6:
+        premise_template = ' Review: {sentence}\n Question: Is the sentiment of the above review Positive or Negative?\n Answer:'
+        uncond_premise = ' Positive or Negative?\n Answer:' 
+        hypotheses = [' Negative', ' Positive']
+    elif variant == 7:
+        premise_template = ' Review: {sentence}\n Question: Did the author think that the movie was good or bad?\n Answer:'
+        uncond_premise = 'the movie was good or bad?\n Answer:'
+        hypotheses = [' bad', ' good']
+    elif variant == 8:
+        premise_template = ' Question: Did the author of the following tweet think that the movie was good or bad?\n Tweet: {sentence}\n Answer:'
+        uncond_premise =  ' Was the movie was good or bad?\n Tweet: <redacted>\n Answer:'
+        hypotheses = [' bad', ' good']
+    elif variant == 9:
+        premise_template = ' {sentence} My overall feeling was that the movie was'
+        uncond_premise =  '  My overall feeling was that the movie was'
+        hypotheses = [' bad', ' good']
+    elif variant == 10:
+        premise_template = ' {sentence} I' 
+        uncond_premise =  ' After watching the movie, I decided I'
+        hypotheses = [' hated', ' liked']
+    elif variant == 11:
+        premise_template = ' {sentence} My friend asked me if I would give the movie 0 or 5 stars, I said' 
+        uncond_premise =  ' My friend asked me if I would give the movie 0 or 5 stars, I said'
+        hypotheses = [' 0', ' 5']
+    elif variant == 12:
+        premise_template = ' Input: {sentence}\n Sentiment:'
+        uncond_premise =  ' Analyze the sentiment of the previous statement.\n Sentiment:'
+        hypotheses = [' Negative', ' Positive']
+    elif variant == 13:
+        premise_template = ' Review: {sentence}\n Positive:'
+        uncond_premise =  ' Positive:'
+        hypotheses = [' False', ' True']
+    elif variant == 14:
+        premise_template = ' Review: {sentence} Stars:'
+        uncond_premise =  ' How many stars would you give this movie:' 
+        hypotheses = [' 0', ' 5']
+    else:
+        raise NotImplementedError
+
+    return premise_template, uncond_premise, hypotheses
+
+def load_examples_sst2_variants(path, variant):
+    premise_template, uncond_premise, hypotheses = get_sst2_variant_template(variant)
+
     data = []
     with open(path) as f:
         for line in f:
@@ -435,18 +558,19 @@ def load_examples_sst2(path):
 
     examples = []
     for d in data:
-        premise = f"\"{d['sentence']}\" has a tone that is"
+        premise = premise_template.format(sentence=d['sentence'])
         options = []
-        for h in [' negative.<|endoftext|>', ' positive.<|endoftext|>']:
+        for h in hypotheses:
             o = {}
             o['premise'] = premise
             o['hypothesis'] = h
-            o['uncond_premise'] = ' The quote has a tone that is'
+            o['uncond_premise'] = uncond_premise
             o['uncond_hypothesis'] = h
             options.append(o)
         label = d['correct_hypothesis']
         examples.append({'options' : options, 'label' : label })
     return examples
+
 
 def load_examples_agn(path):
     topics = [ 'World', 'Sports', 'Business', 'Science' ] 
@@ -590,64 +714,6 @@ def load_examples_boolq(path):
             options.append(o)
         label = 1 if not d['answer'] else 0 #.strip().lower() == 'false' else 1
         examples.append({'options' : options, 'label' : label })
-    return examples
-
-def load_examples_sst(input_directory, curr_set="dev", granularity="binary"):
-    """
-    Loads the Stanford Sentiment Treebank with binary / fine-grained labels
-    :param input_directory: the dataset directory
-    :param curr_set: train, test, or dev
-    :param granularity: binary / fine
-    :return: a list of examples
-    """
-    # Load dataset
-    dataset = pytreebank.load_sst(input_directory)
-
-    examples = []
-
-    for item in dataset[curr_set]:
-        root = item.to_labeled_lines()[0]
-        fine_grained_label, sentence = root
-
-        # Detokenize the sentence, i.e. remove trailing spaces etc.
-        premise = detokenizer(sentence.strip())
-
-        if not premise.endswith("."):
-            premise = premise + "."
-
-        # Fine grained
-        if granularity == "fine":
-            opts = [" very negative.", " somewhat negative.", " neutral.", " somewhat positive.", " very positive."]
-            label = fine_grained_label
-        # Binary
-        else:
-            # Omit neutral examples from the binary version
-            if fine_grained_label == 2:
-                continue
-
-            opts = [" negative.", " positive."]
-            label = 0 if fine_grained_label < 2 else 1
-            
-            
-        #premise = f"\"{d['sentence']}\" has a tone that is"
-        
-        
-        
-        premise = f"\"{premise}\" has a tone that is"
-        options = []
-        for h in opts:
-            o = {}
-
-            h = h + '<|endoftext|>'
-            o['premise'] = premise
-            o['hypothesis'] = h 
-            o['uncond_premise'] = ' The quote has a tone that is'
-            o['uncond_hypothesis'] = h
-            options.append(o)
-        label = label
-        examples.append({'options' : options, 'label' : label })
-
-
     return examples
 
 def load_examples_trec(path):

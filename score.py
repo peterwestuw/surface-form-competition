@@ -34,7 +34,7 @@ def get_model(model_name, key_file):
         raise ValueError(f'No model {model_name}')
     return model, encoder, name
 
-def get_examples(dataset_name, split, stem):
+def get_examples(dataset_name, split, stem, n_shot, variant):
     if dataset_name == 'copa':
         from data_loaders import load_examples_copa
         examples = load_examples_copa(f'{stem}copa-{split}.xml')
@@ -86,16 +86,20 @@ def get_examples(dataset_name, split, stem):
         examples = load_examples_cb(f'{stem}dev.jsonl')
         closed_label_space = True
     elif dataset_name == 'sst-2':
-        from data_loaders import load_examples_sst2
-        examples = load_examples_sst2(f'{stem}{split}.txt')
+        from data_loaders import load_examples_sst2, load_examples_sst2_variants
+        if n_shot > 0:
+            examples = load_examples_sst2(f'{stem}{split}.tsv', f'{stem}/train.tsv', n_shot)
+        elif variant is not None:
+            examples = load_examples_sst2_variants(f'{stem}{split}.tsv', variant)
+        else:
+            examples = load_examples_sst2(f'{stem}{split}.tsv')
         closed_label_space = True
     elif dataset_name == 'sst-5':
         from data_loaders import load_examples_sst5
-        examples = load_examples_sst5(f'{stem}{split}.txt')
+        examples = load_examples_sst5(f'{stem}{split}.tsv')
         closed_label_space = True
     elif dataset_name == 'agn':
         from data_loaders import load_examples_agn
-        split = 'train' if split == 'dev' else split
         examples = load_examples_agn(f'{stem}{split}.csv')
         closed_label_space = True
     elif dataset_name == 'trec':
@@ -122,6 +126,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', type=str)
     parser.add_argument('--model', type=str, default='xl')
+    parser.add_argument('--n-shot', type=int, default=0)
+    parser.add_argument('--variant', type=int, default=None)
     parser.add_argument('--split', type=str, default='dev')
     parser.add_argument('--batch', type=int, default=10)
     parser.add_argument('--sample', type=int, default=None)
@@ -146,7 +152,7 @@ if __name__ == '__main__':
         stem = f'data/{args.dataset[:-4]}/'
     else:
         stem = f'data/{args.dataset}/'
-    examples, closed_label_space = get_examples(args.dataset, args.split, stem)
+    examples, closed_label_space = get_examples(args.dataset, args.split, stem, args.n_shot, args.variant)
     if args.sample:
         assert(args.sample <= len(examples))
         examples = random.sample(examples, args.sample)
@@ -154,4 +160,5 @@ if __name__ == '__main__':
 
     # print results
     print(f'{name} gets {accs}% on {args.dataset}')
-    print(f"{accs['uncond']} & {accs['lm']} & {accs['tok_mean']} & {accs['dcpmi']}")
+    print(f"{accs['domain_cond']} & {accs['lm']} & {accs['tok_mean']} & {accs['pmi']} & {accs['dcpmi']}")
+    print(f"{accs['domain_cond']}, {accs['lm']}, {accs['tok_mean']}, {accs['dcpmi']}")
