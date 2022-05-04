@@ -460,7 +460,7 @@ def load_examples_sst2(path, ex_path=None, n_shot=None):
 
     examples = []
     for d in data:
-        premise = f"{d['sentence']}:"
+        premise = f"\"{d['sentence']}\" has a tone that is"
         if fewshot_prefix is not None:
             premise = fewshot_prefix + premise
         options = []
